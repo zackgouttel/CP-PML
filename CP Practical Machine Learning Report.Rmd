@@ -1,0 +1,179 @@
+---
+title: "CP Practical Machine Learning Report"
+author: "Zack Gouttel"
+date: "04/09/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Intro
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, our goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+## Loading The data and the necessary packages
+
+```{r Loading the Data and the prerequisites}
+library(caret)
+library(rpart)
+library(rpart.plot)
+library(RColorBrewer)
+library(rattle)
+library(randomForest)
+library(gbm)
+
+test_set<-read.csv("pml-testing (1).csv")
+train_set<-read.csv("pml-training (1).csv")
+
+#dim(train_set)
+#dim(test_set)
+```
+
+## Cleaning the Data
+
+We need to: 1- Remove near-zero variance variables, as those won't be of any use in the prediction "near constant"
+            2- Remove non-numeric variables, that we cannot use whatsoever in the prediction
+            3- Remove NA values, with a threshold of 95%
+            
+
+```{r Cleaning the Data, echo=FALSE}
+##PART 1
+near_zero_var <- nearZeroVar(train_set)
+
+train_set <- train_set[,-near_zero_var]
+test_set <- test_set[,-near_zero_var]
+
+#dim(train_set)
+#dim(test_set)
+
+##PART 2
+
+na_val_col <- sapply(train_set, function(x) mean(is.na(x))) > 0.95
+
+train_set <- train_set[,na_val_col == FALSE]
+test_set<- test_set[,na_val_col == FALSE]
+
+#dim(train_set)
+#dim(test_set)
+
+#PART 3
+train_set <- train_set[,8:59]
+test_set <- test_set[,8:59]
+
+#dim(train_set)
+#dim(test_set)
+
+#colnames(train_set)
+#colnames(test_set)
+```
+
+## Paritioning
+
+we'll divide our Training set into 60% for training and 40% for testing
+
+```{r Partitioning}
+inTrain <- createDataPartition(train_set$classe, p=0.6, list=FALSE)
+training <- train_set[inTrain,]
+testing <- train_set[-inTrain,]
+
+#dim(training)
+#dim(testing)
+```
+
+## Decision Tree Model
+
+```{r DTM 1}
+DT_modfit <- train(classe ~ ., data = training, method="rpart")
+```
+
+Prediction using DTM:
+
+```{r DTM 2}
+DT_prediction <- predict(DT_modfit, testing)
+confusionMatrix(DT_prediction, testing$classe)
+```
+
+
+```{r DTM 3}
+rpart.plot(DT_modfit$finalModel, roundint=FALSE)
+```
+The prediction is only correct about 50% of the time so the DTM isn't really reliable
+
+## Random Forest Model
+
+```{r RFM 1}
+RF_modfit <- train(classe ~ ., data = training, method = "rf", ntree = 100)
+```
+
+Prediction using RFM:
+
+```{r RFM 2}
+RF_prediction <- predict(RF_modfit, testing)
+RF_pred_conf <- confusionMatrix(RF_prediction, testing$classe)
+RF_pred_conf
+```
+
+And we plot it here:
+
+```{r RFM 3, echo=FALSE}
+plot(RF_pred_conf$table, col = RF_pred_conf$byClass, 
+     main = paste("Random Forest - Accuracy Level =",
+                  round(RF_pred_conf$overall['Accuracy'], 4)))
+```
+
+
+From the Confusion Matrix's CI, we get a 99% accuracy most of the times so the RFM is satisfying our needs.
+
+## Gradient Boosting Model
+
+```{r GBM 1}
+GBM_modfit <- train(classe ~ ., data = training, method = "gbm", verbose = FALSE)
+GBM_modfit$finalModel
+```
+
+Prediction using RFM:
+
+```{r GBM 2}
+#GBM_prediction <- predict(GBM_modfit, testing, type = "class", n.trees = 5, type = link)
+GBM_prediction <- predict(GBM_modfit, testing)
+
+GBM_pred_conf <- confusionMatrix(GBM_prediction, testing$classe)
+GBM_pred_conf
+```
+
+And we plot it here:
+
+```{r GBM 3, echo=FALSE}
+plot(GBM_pred_conf$table, col = GBM_pred_conf$byClass, 
+     main = paste("Gradient Boosting - Accuracy Level =",
+                  round(GBM_pred_conf$overall['Accuracy'], 4)))
+``` 
+
+From the Confusion Matrix's CI, we get a 95% accuracy most of the times so the GBM is satisfying our needs.
+
+**Now we need to compare how each model went through our validation set, here we'll only consider the last two models GBM and RFM since the DTM never made the necessary accuracy in the first place**
+
+```{r RFM overall}
+
+RF_pred_conf$overall
+```
+
+
+```{r GBM overall}
+
+GBM_pred_conf$overall
+``` 
+
+After this comparison it is clear that the Random Forests Model has more precision than the Gradient boost model, so we'll be applying the RFM for the final prediction on the test set
+
+## Final Prediction
+```{r Final Prediction}
+
+Final_RF_prediction <- predict(RF_modfit, test_set )
+Final_RF_prediction
+``` 
+
+
+
